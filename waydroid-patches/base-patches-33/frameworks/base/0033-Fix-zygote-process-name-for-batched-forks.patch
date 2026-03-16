@@ -1,0 +1,48 @@
+From 772724bcfd688d5c13f58f3f24e5b3d7ba8f1123 Mon Sep 17 00:00:00 2001
+From: rikka <ayasa0520@gmail.com>
+Date: Tue, 17 Mar 2026 05:14:32 +0800
+Subject: [PATCH] Fix zygote process name for batched forks When using
+ forkSimpleApps, ZygoteConnection was calling
+ Zygote.setAppProcessName(parsedArgs, ...) in the child, where parsedArgs
+ referred to the first command in the batch. This caused subsequent processes
+ to temporarily use the wrong process name (e.g. com.android.deskclock) before
+ ActivityThread corrected it. Port AOSP change
+ 69d44b0bfd5d4a6721ab3dccf537a147af7b6d1d to Waydroid's Android 13 tree.
+
+Change-Id: I9df07e64164b8bd6bbf0094e5fa54458adf8d05d
+---
+ core/java/com/android/internal/os/Zygote.java           | 5 +++++
+ core/java/com/android/internal/os/ZygoteConnection.java | 1 -
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/core/java/com/android/internal/os/Zygote.java b/core/java/com/android/internal/os/Zygote.java
+index b1e7d15cbf4a..2eb0db12d1c9 100644
+--- a/core/java/com/android/internal/os/Zygote.java
++++ b/core/java/com/android/internal/os/Zygote.java
+@@ -855,6 +855,11 @@ public final class Zygote {
+                                  args.mPkgDataInfoList, args.mAllowlistedDataInfoList,
+                                  args.mBindMountAppDataDirs, args.mBindMountAppStorageDirs);
+ 
++            // While `specializeAppProcess` sets the thread name on the process's main thread, this
++            // is distinct from the app process name which appears in stack traces, as the latter is
++            // sourced from the argument buffer of the Process class. Set the app process name here.
++            Zygote.setAppProcessName(args, TAG);
++
+             Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+ 
+             return ZygoteInit.zygoteInit(args.mTargetSdkVersion,
+diff --git a/core/java/com/android/internal/os/ZygoteConnection.java b/core/java/com/android/internal/os/ZygoteConnection.java
+index 765901a043a0..9777f868e3b4 100644
+--- a/core/java/com/android/internal/os/ZygoteConnection.java
++++ b/core/java/com/android/internal/os/ZygoteConnection.java
+@@ -299,7 +299,6 @@ class ZygoteConnection {
+                     } else {
+                         // child; result is a Runnable.
+                         zygoteServer.setForkChild();
+-                        Zygote.setAppProcessName(parsedArgs, TAG);  // ??? Necessary?
+                         return result;
+                     }
+                 }
+-- 
+2.53.0
+
